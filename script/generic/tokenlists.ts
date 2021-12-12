@@ -253,11 +253,13 @@ function checkTokenExists(id: string, chainName: string): boolean {
     return true;
 }
 
-export async function addPairIfNeeded(token0: TokenItem, token1: TokenItem, list: List): Promise<void> {
+export async function addPairIfNeeded(token0: TokenItem, token1: TokenItem, list: List, includePairs: boolean): Promise<void> {
     await addTokenIfNeeded(token0, list);
     await addTokenIfNeeded(token1, list);
-    addPairToToken(token1, token0, list);
-    // reverse direction not needed addPairToToken(token0, token1, list);
+    if (includePairs) {
+        addPairToToken(token1, token0, list);
+        // reverse direction not needed addPairToToken(token0, token1, list);
+    }
 }
 
 function sort(list: List) {
@@ -268,7 +270,9 @@ function sort(list: List) {
         return t1.address.localeCompare(t2.address);
     });
     list.tokens.forEach(t => {
-        t.pairs.sort((p1, p2) => p1.base.localeCompare(p2.base));
+        if (t.pairs) {
+            t.pairs.sort((p1, p2) => p1.base.localeCompare(p2.base));
+        }
     });
 }
 
@@ -296,7 +300,15 @@ export function diffTokenlist(listOrig1: List, listOrig2: List): unknown {
     return diffs;
 }
 
-export async function rebuildTokenlist(chainName: string, pairs: [TokenItem, TokenItem][], listName: string, forceExcludeList: string[]): Promise<void> {
+function adjustTokenList(list: List) {
+    list.tokens.forEach(t => {
+        if (t.pairs.length == 0) {
+            delete t.pairs;
+        }
+    });
+}
+
+export async function rebuildTokenlist(chainName: string, pairs: [TokenItem, TokenItem][], listName: string, includePairs: boolean, forceExcludeList: string[]): Promise<void> {
     // sanity check, prevent deletion of many pairs
     if (!pairs || pairs.length < 5) {
         console.log(`Warning: Only ${pairs.length} pairs returned, ignoring`);
@@ -332,9 +344,11 @@ export async function rebuildTokenlist(chainName: string, pairs: [TokenItem, Tok
     removeAllPairs(list);
 
     await bluebird.each(pairs2, async (p) => {
-        await addPairIfNeeded(p[0], p[1], list);
+        await addPairIfNeeded(p[0], p[1], list, includePairs);
     });
     console.log(`Tokenlist updated: ${list.tokens.length} tokens`);
+    adjustTokenList(list);
+    console.log(`Tokenlist adjusted: ${list.tokens.length} tokens`);
 
     const newList = createTokensList(listName, list.tokens,
         "2021-01-29T01:02:03.000+00:00", // use constant here to prevent changing time every time
